@@ -1,0 +1,33 @@
+{
+  "name": "env-web-scanner",
+  "version": "0.1.0",
+  "description": "Crawl websites and detect exposed .env files (for authorized testing only).",
+  "type": "module",
+  "main": "dist/crawlerEnvScanner.js",
+  "bin": {
+    "env-scan-domain": "dist/crawlerEnvScanner.js",
+    "env-scan-run": "dist/runScan.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/crawlerEnvScanner.js",
+    "scan:domain": "node dist/crawlerEnvScanner.js",
+    "scan:batch": "node dist/runScan.js"
+  },
+  "keywords": [
+    "crawler",
+    "security",
+    "env",
+    "scanner",
+    "website-scraper"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.0",
+    "website-scraper": "^5.3.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
