@@ -1,55 +1,50 @@
-You won’t get a literal “newest sites” feed out-of-the-box, but you can wire a usable pipeline: Athena query → hosts file → `env-scan-run`. Below is the minimal, end‑to‑end setup.
+# Env Web Scanner with Certificate Transparency Logs
 
-## 1. Set up Athena on Common Crawl
+Detect exposed .env files on newly issued domains using Certificate Transparency (CT) logs for near-real-time discovery (🔥 underrated).
 
-Common Crawl data is on AWS as a public dataset; you query it via Athena against their URL index.[1]
+## Why CT Logs?
+- **Near-real-time**: Catch domains as certs are issued, including phishing, throwaway infra, new projects.
+- **Zero crawling required**: Public logs provide fresh domains without scraping.
+- **Powerful for security**: Focus on live infra, not historical crawls.
 
-High-level steps in AWS:
+**Tools**:
+- crt.sh API: Primary source for recent certs.
+- Example: `curl "https://crt.sh/?q=%.com&output=json" | jq -r '.[].name_value'`
 
-1. Create an S3 bucket for query results, e.g. `s3://my-cc-athena-results/`.  
-2. In Athena, set that bucket as the query result location.  
-3. Create a database, e.g.:
+You won’t get a literal “newest sites” feed, but wire a usable pipeline: CT pull → hosts file → `env-scan-run`.
 
-```sql
-CREATE DATABASE IF NOT EXISTS commoncrawl;
+## 1. CT Pull: New Domains via crt.sh
+
+The `athena-pull.mjs` script (renamed conceptually for CT) fetches recent domains from crt.sh.
+
+**Prerequisites**:
+- Node.js with axios (installed via `npm install`).
+
+**Usage**:
+```bash
+node src/athena-pull.mjs [tld] [limit]
 ```
-
-4. Create an external table over the current URL index.  
-   Common Crawl’s docs show the exact DDL for the current “URL Index” table; grab their latest `CREATE EXTERNAL TABLE` statement from the “Get Started” / URL Index section and run it in your `commoncrawl` DB.[1]
-
-You’ll end up with a table (name varies by doc, often `ccindex` or similar) that includes fields like `url`, `host`, `crawl`, `status`, `fetch_time` or similar timestamp.
-
-## 2. Athena query: newest crawl, host list
-
-Adjust the table/column names to match their current URL index schema; conceptually you want:
-
-```sql
--- Example: host list from the newest crawl, limited to N
-SELECT DISTINCT host
-FROM commoncrawl.ccindex
-WHERE crawl = 'CC-MAIN-2026-01'      -- newest crawl ID
-  AND status = 200
-  AND scheme = 'https'
-LIMIT 100000;
-```
+- No args: Fetches top 100000 unique .com domains from recent certs.
+- `[tld]` (e.g., 'dev'): Custom TLD suffix (e.g., %.dev).
+- `[limit]` (e.g., 100): Max domains (default 100000).
+- Outputs `hosts.txt` (one domain per line) in project root. Includes subdomains/wildcards from cert SANs/CN.
 
 Notes:
+- Returns newest certs first; top results are recent issuances.
+- Rate limits: Script includes timeout/UA; for heavy use, add delays.
+- Domains are lowercase, unique, filtered non-empty.
 
-- Use the actual table name from the DDL you copied from Common Crawl docs.[1]
-- `crawl = 'CC-MAIN-2026-01'` pins to the newest monthly crawl; update this as new crawls appear.[2][3]
-- You can add filters (e.g., `tld = 'com'`) if you want to narrow scope.  
+Chain with batch scan:
+```bash
+node src/athena-pull.mjs 100000 && node src/env-scan-run.mjs hosts.txt scan-results 1
+```
 
-Run the query, then:
-
-- In Athena console, click “Download results” → CSV.  
-- Save as `hosts-2026-01.txt`, keep one hostname per line.
-
-## 3. Node batch runner: `env-scan-run.mjs`
+## 2. Node Batch Runner: `env-scan-run.mjs`
 
 Use the JS batch runner tied to your existing `crawlAndScan`:
 
 ```js
-// env-scan-run.mjs
+// env-scan-run.mjs (as before)
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -147,36 +142,31 @@ if (import.meta.url === `file://${process.argv[1]}`) {
 }
 ```
 
-This expects your existing `crawlerEnvScanner.mjs` file exactly as we had it earlier.
+This expects your existing `crawlerEnvScanner.mjs` file.
 
-## 4. Putting it together
+## 3. Putting it Together
 
-1. In your repo, have:
-
-   - `crawlerEnvScanner.mjs` (single-domain crawler + scanner).  
-   - `env-scan-run.mjs` (batch runner above).  
+1. In your repo:
+   - `athena-pull.mjs` (CT domain fetcher).
+   - `env-scan-run.mjs` (batch runner above).
+   - `crawlerEnvScanner.mjs` (single-domain crawler + scanner).
 
 2. Install deps:
-
 ```bash
-npm install website-scraper axios
+npm install axios website-scraper
 ```
 
-3. From Athena, download your host list and save as `hosts-2026-01.txt`.
-
-4. Run the batch scan:
-
+3. Run the batch scan:
 ```bash
-node env-scan-run.mjs hosts-2026-01.txt out-2026-01 1
+node src/athena-pull.mjs  # Generates hosts.txt with 100000 .com domains
+node src/env-scan-run.mjs hosts.txt out-results 1
 ```
+- `hosts.txt` – output from CT pull.
+- `out-results` – directory for JSON results per host + `summary.json`.
+- Depth `1` for shallow, fast crawling.
 
-- `hosts-2026-01.txt` – output from Athena query (one host per line).  
-- `out-2026-01` – directory where JSON results per host + `summary.json` go.  
-- Depth `1` keeps crawling shallow and faster.
+This is the full pipeline: CT logs → hosts file → Node batch scanner, focusing on newly issued domains for .env exposure detection.
 
-This is the full, ready-to-run integration loop: newest Common Crawl → hosts file → Node batch scanner, with the “newest” aspect controlled by choosing the latest crawl ID and (optionally) timestamp filters in Athena.[3][2][1]
-
-Sources
-[1] Overview - Common Crawl https://commoncrawl.org/overview
-[2] All Around The World: The Common Crawl Dataset - watchTowr Labs https://labs.watchtowr.com/all-around-the-world-the-common-crawl-dataset/
-[3] Common Crawl - Open Repository of Web Crawl Data https://commoncrawl.org
+Sources:
+- crt.sh: Certificate Transparency Search
+- Certificate Transparency Logs: Google Argon, Facebook Nimbus (alternative sources for advanced setups).

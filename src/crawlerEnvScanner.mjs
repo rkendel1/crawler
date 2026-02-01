@@ -27,6 +27,22 @@ function looksLikeEnv(body) {
   return kvLines.length >= 3;
 }
 
+function findSecretKeys(content) {
+  const regex = /sk-[a-zA-Z0-9_-]{20,}/gi;
+  const lines = content.split(/\r?\n/);
+  const matches = [];
+  lines.forEach((line, idx) => {
+    const hits = [...line.matchAll(regex)];
+    if (hits.length > 0) {
+      hits.forEach(hit => {
+        const snippet = line.slice(Math.max(0, line.indexOf(hit[0]) - 20), line.indexOf(hit[0]) + hit[0].length + 20).trim();
+        matches.push({ lineNum: idx + 1, key: hit[0], snippet });
+      });
+    }
+  });
+  return matches.length > 0 ? matches.slice(0, 5) : []; // Limit to first 5
+}
+
 function normalizeBase(base) {
   if (!base.startsWith("http://") && !base.startsWith("https://")) {
     return "https://" + base.replace(/\/+$/, "");
@@ -104,8 +120,13 @@ export async function crawlAndScan(baseUrl, maxDepth = 2) {
   const discoveredDirs = new Set();
   discoveredDirs.add(new URL(startUrl).origin + "/");
 
-  // website-scraper plugin to collect directories while crawling[web:43][web:44]
-  class CollectDirsPlugin {
+  // website-scraper plugin to collect directories and scan for sk- secrets[web:43][web:44]
+  class CollectDirsAndSecretsPlugin {
+    constructor() {
+      this.secretHits = [];
+      this.envInlineHits = [];
+    }
+
     apply(registerAction) {
       registerAction("onResourceSaved", ({ resource }) => {
         const url = resource.getUrl ? resource.getUrl() : resource.url;
@@ -121,10 +142,60 @@ export async function crawlAndScan(baseUrl, maxDepth = 2) {
             dir = lastSlash >= 0 ? u.pathname.slice(0, lastSlash + 1) : "/";
           }
           discoveredDirs.add(u.origin + dir);
+
+          // Scan for sk- secrets if text resource
+          if (!resource.binary && typeof resource.content === 'string') {
+            const matches = findSecretKeys(resource.content);
+            if (matches.length > 0) {
+              this.secretHits.push({
+                url,
+                matches,
+                contentLength: resource.content.length,
+              });
+            }
+
+            // Scan for inline env exposures in JS/HTML
+            if (u.pathname.endsWith('.js') || u.pathname.endsWith('.html') || u.pathname.endsWith('.htm')) {
+              const content = resource.content;
+              const envRegexes = [
+                /process\.env\.(\w+)/gi,
+                /window\.(\w*Env\w*)/gi,
+                /meta\s+name=["']([^"']*env[^"']*)["'][^>]*content=["']([^"']+)["']/gi
+              ];
+              const inlineMatches = [];
+              const lines = content.split(/\r?\n/);
+              lines.forEach((line, idx) => {
+                envRegexes.forEach(regex => {
+                  const hits = [...line.matchAll(regex)];
+                  hits.forEach(hit => {
+                    const varName = hit[1];
+                    const value = hit[3] || null; // For meta, value in group 3
+                    const snippet = line.slice(Math.max(0, line.indexOf(hit[0]) - 20), line.indexOf(hit[0]) + hit[0].length + 20).trim();
+                    inlineMatches.push({ lineNum: idx + 1, varName, value, snippet, regex: regex.source });
+                  });
+                });
+              });
+              if (inlineMatches.length > 0) {
+                this.envInlineHits.push({
+                  url,
+                  matches: inlineMatches.slice(0, 5),
+                  contentLength: content.length,
+                });
+              }
+            }
+          }
         } catch {
-          // ignore malformed URLs
+          // ignore malformed URLs or non-text
         }
       });
+    }
+
+    getSecretHits() {
+      return this.secretHits;
+    }
+
+    getEnvInlineHits() {
+      return this.envInlineHits;
     }
   }
 
@@ -133,19 +204,25 @@ export async function crawlAndScan(baseUrl, maxDepth = 2) {
   const __dirname = path.dirname(__filename);
   const mirrorDir = path.join(__dirname, "mirror");
 
+  if (fs.existsSync(mirrorDir)) {
+    fs.rmSync(mirrorDir, { recursive: true, force: true });
+  }
+
+  const plugin = new CollectDirsAndSecretsPlugin();
   await scrape({
     urls: [startUrl],
     directory: mirrorDir,
     recursive: true,
     maxRecursiveDepth: maxDepth,
-    plugins: [new CollectDirsPlugin()],
-    request: {
-      maxConcurrentConnections: 5,
-    },
+    plugins: [plugin],
   });
 
+  fs.rmSync(mirrorDir, { recursive: true, force: true });
+
+  const secretHits = plugin.getSecretHits();
+
   // 1) scan base-level common .env paths
-  const hits = await scanForEnvAtBase(startUrl);
+  const envHits = await scanForEnvAtBase(startUrl);
 
   // 2) for each discovered directory, try <dir>/.env
   const dirUrls = Array.from(discoveredDirs).map((dir) =>
@@ -159,19 +236,30 @@ export async function crawlAndScan(baseUrl, maxDepth = 2) {
     while (idx < dirUrls.length) {
       const current = dirUrls[idx++];
       const hit = await probeUrl(current);
-      if (hit) hits.push(hit);
+      if (hit) envHits.push(hit);
     }
   }
 
   await Promise.all(Array.from({ length: concurrency }, () => dirWorker()));
 
-  // dedupe by URL
+  // dedupe env hits by URL
   const byUrl = new Map();
-  for (const h of hits) {
+  for (const h of envHits) {
     if (!byUrl.has(h.url)) byUrl.set(h.url, h);
   }
 
-  return Array.from(byUrl.values());
+  // dedupe secret hits by URL
+  const secretByUrl = new Map();
+  for (const h of secretHits) {
+    if (!secretByUrl.has(h.url)) secretByUrl.set(h.url, h);
+  }
+
+  const envInlineHits = plugin.getEnvInlineHits();
+
+  return {
+    envHits: [...Array.from(byUrl.values()), ...envInlineHits],
+    secretHits: Array.from(secretByUrl.values())
+  };
 }
 
 // CLI entrypoint: node crawlerEnvScanner.mjs <url> [maxDepth] [outFile]
@@ -194,19 +282,24 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
 
   crawlAndScan(target, maxDepth)
-    .then((hits) => {
-      const payload = {
-        target,
-        maxDepth,
-        findings: hits,
-        scannedAt: new Date().toISOString(),
-      };
+    .then(({ envHits, secretHits }) => {
+      if (envHits.length > 0 || secretHits.length > 0) {
+        const payload = {
+          target,
+          maxDepth,
+          envFindings: envHits,
+          secretFindings: secretHits,
+          scannedAt: new Date().toISOString(),
+        };
 
-      const json = JSON.stringify(payload, null, 2);
-      fs.writeFileSync(outFile, json, "utf8"); // typical fs.writeFileSync pattern[web:34][web:37][web:40]
+        const json = JSON.stringify(payload, null, 2);
+        fs.writeFileSync(outFile, json, "utf8"); // typical fs.writeFileSync pattern[web:34][web:37][web:40]
 
-      console.log(json);
-      console.error(`Wrote results to ${outFile}`);
+        console.log(json);
+        console.error(`Wrote results to ${outFile}`);
+      } else {
+        console.log(`No env or sk- findings for ${target}`);
+      }
     })
     .catch((err) => {
       console.error("Error:", err);
