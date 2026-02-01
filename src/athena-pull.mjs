@@ -21,20 +21,20 @@ async function main() {
 
   for (const querySuffix of tlds) {
     const jitter = 2000 + Math.random() * 4000; // 2-6s jitter for variability
-    await new Promise(resolve => setTimeout(resolve, jitter + 10000)); // 10s base + jitter
+    await new Promise(resolve => setTimeout(resolve, jitter + 15000)); // 15s base + jitter
 
     const url = `https://crt.sh/?q=${encodeURIComponent(`%.${querySuffix}`)}&output=json`;
   
     console.error(`Fetching recent domains ending in .${querySuffix} from crt.sh...`);
 
     let retryCount = 0;
-    const maxRetries = 3;
+    const maxRetries = 5;
     let response;
     while (retryCount < maxRetries) {
       const randomUA = userAgents[Math.floor(Math.random() * userAgents.length)];
       try {
         response = await axios.get(url, {
-          timeout: 60000, // 60s timeout
+          timeout: 120000, // 120s timeout
           headers: {
             'User-Agent': randomUA,
             'Accept': 'application/json, text/plain, */*',
@@ -45,10 +45,12 @@ async function main() {
         break; // Success, exit retry loop
       } catch (err) {
         const status = err.response?.status;
-        if (status === 502 || status === 503) {
+        const isTimeout = err.code === 'ECONNABORTED' || err.code === 'ETIMEDOUT';
+        if (status === 502 || status === 503 || status === 429 || isTimeout) {
           retryCount++;
-          console.error(`Retry ${retryCount}/${maxRetries} for .${querySuffix} after ${status} error`);
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 2000)); // Exponential backoff
+          const errorType = isTimeout ? 'timeout' : `${status} error`;
+          console.error(`Retry ${retryCount}/${maxRetries} for .${querySuffix} after ${errorType}`);
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, retryCount) * 5000)); // Exponential backoff with 5s base
         } else {
           throw err; // Non-rate-limit error, fail
         }
