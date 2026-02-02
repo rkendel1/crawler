@@ -1,0 +1,9 @@
+{
+  "target": "https://webhostingzone.org",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T04:00:12.446Z"
+}

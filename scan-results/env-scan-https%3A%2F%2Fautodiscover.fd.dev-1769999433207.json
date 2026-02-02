@@ -1,0 +1,9 @@
+{
+  "target": "https://autodiscover.fd.dev",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T02:30:33.207Z"
+}

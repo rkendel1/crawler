@@ -1,0 +1,9 @@
+{
+  "target": "https://www.cloudstore.app",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T02:26:01.059Z"
+}

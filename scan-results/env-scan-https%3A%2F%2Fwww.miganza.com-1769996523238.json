@@ -1,0 +1,9 @@
+{
+  "target": "https://www.miganza.com",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T01:42:03.238Z"
+}

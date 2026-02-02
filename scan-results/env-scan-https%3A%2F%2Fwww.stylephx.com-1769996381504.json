@@ -1,0 +1,9 @@
+{
+  "target": "https://www.stylephx.com",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T01:39:41.504Z"
+}

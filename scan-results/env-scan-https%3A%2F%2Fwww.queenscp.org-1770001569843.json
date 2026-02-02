@@ -1,0 +1,9 @@
+{
+  "target": "https://www.queenscp.org",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T03:06:09.843Z"
+}

@@ -1,0 +1,9 @@
+{
+  "target": "https://support.app",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T02:09:35.455Z"
+}

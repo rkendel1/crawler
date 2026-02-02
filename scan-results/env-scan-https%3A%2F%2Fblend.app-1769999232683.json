@@ -1,0 +1,9 @@
+{
+  "target": "https://blend.app",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T02:27:12.683Z"
+}

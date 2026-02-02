@@ -1,0 +1,9 @@
+{
+  "target": "https://dispatch.app",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T02:21:40.523Z"
+}

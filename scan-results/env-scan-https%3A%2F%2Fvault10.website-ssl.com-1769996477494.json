@@ -1,0 +1,9 @@
+{
+  "target": "https://vault10.website-ssl.com",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T01:41:17.494Z"
+}

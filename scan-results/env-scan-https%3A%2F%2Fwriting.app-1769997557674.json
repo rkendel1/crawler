@@ -1,0 +1,9 @@
+{
+  "target": "https://writing.app",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T01:59:17.674Z"
+}

@@ -1,0 +1,9 @@
+{
+  "target": "https://boardgamer.app",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T02:20:04.641Z"
+}

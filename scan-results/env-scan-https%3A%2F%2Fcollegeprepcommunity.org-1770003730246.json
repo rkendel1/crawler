@@ -1,0 +1,9 @@
+{
+  "target": "https://collegeprepcommunity.org",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T03:42:10.246Z"
+}

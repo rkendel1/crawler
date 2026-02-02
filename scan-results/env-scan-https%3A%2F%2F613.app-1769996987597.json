@@ -1,0 +1,9 @@
+{
+  "target": "https://613.app",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T01:49:47.597Z"
+}

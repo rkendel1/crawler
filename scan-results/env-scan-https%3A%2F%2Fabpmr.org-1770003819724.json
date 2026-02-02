@@ -1,0 +1,9 @@
+{
+  "target": "https://abpmr.org",
+  "maxDepth": 1,
+  "findings": {
+    "envHits": [],
+    "secretHits": []
+  },
+  "scannedAt": "2026-02-02T03:43:39.724Z"
+}
