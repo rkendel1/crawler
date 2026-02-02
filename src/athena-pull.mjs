@@ -23,7 +23,14 @@ async function main() {
     const jitter = 2000 + Math.random() * 4000; // 2-6s jitter for variability
     await new Promise(resolve => setTimeout(resolve, jitter + 15000)); // 15s base + jitter
 
-    const url = `https://crt.sh/?q=${encodeURIComponent(`%.${querySuffix}`)}&output=json`;
+    let query;
+    if (querySuffix === 'com') {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+      query = `%.${querySuffix} AND entry_timestamp > "${thirtyDaysAgo}"`;
+    } else {
+      query = `%.${querySuffix}`;
+    }
+    const url = `https://crt.sh/?q=${encodeURIComponent(query)}&output=json`;
   
     console.error(`Fetching recent domains ending in .${querySuffix} from crt.sh...`);
 
